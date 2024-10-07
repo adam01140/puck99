@@ -1,11 +1,12 @@
 const socket = io();
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-
+const playButton = document.getElementById('playButton');
 let players = {};
 let puck = { x: 300, y: 200, radius: 10 };
 let localPlayerId = null;
 let mousePos = { x: 0, y: 0 };
+let isPlaying = false;
 
 // Input handling
 const keys = {};
@@ -18,7 +19,9 @@ canvas.addEventListener('mousemove', (e) => {
     mousePos.x = e.clientX - rect.left;
     mousePos.y = e.clientY - rect.top;
 
-    socket.emit('mouseMove', { x: mousePos.x, y: mousePos.y });
+    if (isPlaying) {
+        socket.emit('mouseMove', { x: mousePos.x, y: mousePos.y });
+    }
 });
 
 // Shoot the puck when the player clicks
@@ -26,16 +29,32 @@ canvas.addEventListener('click', () => {
     const player = players[localPlayerId];
 
     if (player && player.hasPuck) {
-        // Calculate the angle to shoot based on the mouse position relative to the player
         const dx = mousePos.x - player.x;
         const dy = mousePos.y - player.y;
         const angle = Math.atan2(dy, dx);
-        const speed = 7; // Set a speed for the puck
+        const speed = 7;
         const vx = speed * Math.cos(angle);
         const vy = speed * Math.sin(angle);
 
-        // Emit the shoot event to the server with the velocity
         socket.emit('shootPuck', { vx, vy });
+    }
+});
+
+// Handle play button click
+playButton.addEventListener('click', () => {
+    socket.emit('joinGame');
+});
+
+// Handle game join confirmation
+socket.on('playerJoined', (data) => {
+    if (data.success) {
+        localPlayerId = socket.id;
+        playButton.style.display = 'none';
+        canvas.style.display = 'block';
+        alert(data.message);
+        isPlaying = true;
+    } else {
+        alert(data.message);
     }
 });
 
@@ -44,7 +63,6 @@ socket.on('puckPossession', (data) => {
     const player = players[localPlayerId];
     if (player) {
         player.hasPuck = data.hasPuck;
-        console.log(`Updated puck possession for player: ${data.hasPuck}`);
     }
 });
 
@@ -116,8 +134,10 @@ function draw() {
 }
 
 function gameLoop() {
-    handleMovement();
-    draw();
+    if (isPlaying) {
+        handleMovement();
+        draw();
+    }
     requestAnimationFrame(gameLoop);
 }
 

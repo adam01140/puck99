@@ -5,11 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClusterPuck99 Online</title>
     <style>
-        canvas { background-color: #ddd; display: block; margin: 0 auto; }
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #ddd;
+        }
+        #gameCanvas {
+            display: none;
+        }
+        #playButton {
+            font-size: 24px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div id="container">
+        <button id="playButton">Play</button>
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+    </div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
 </body>
