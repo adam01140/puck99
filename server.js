@@ -68,6 +68,7 @@ io.on('connection', (socket) => {
 
             io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
             updatePuckPosition(socket.id);
+            checkSteal(socket.id);  // Check for steal whenever the player moves
             checkGoal();
         });
 
@@ -160,6 +161,19 @@ function checkWin() {
         io.emit('gameOver', 'Player 1');
     } else if (score.player2 >= 10) {
         io.emit('gameOver', 'Player 2');
+    }
+}
+
+// Check for a puck steal if the non-possession player touches the puck
+function checkSteal(playerId) {
+    const player = players[playerId];
+    if (puck.heldBy && puck.heldBy !== playerId && distance(player, puck) < player.radius + puck.radius) {
+        // Steal the puck
+        players[puck.heldBy].hasPuck = false;
+        puck.heldBy = playerId;
+        players[playerId].hasPuck = true;
+        io.to(playerId).emit('puckPossession', { hasPuck: true });
+        console.log(`Player ${playerId} stole the puck!`);
     }
 }
 
