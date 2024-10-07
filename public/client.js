@@ -13,8 +13,8 @@ let score = { player1: 0, player2: 0 };
 
 // Input handling
 const keys = {};
-document.addEventListener('keydown', (e) => { keys[e.key] = true; });
-document.addEventListener('keyup', (e) => { keys[e.key] = false; });
+document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
 // Track mouse position and send it to the server
 canvas.addEventListener('mousemove', (e) => {
@@ -118,14 +118,14 @@ socket.on('gameOver', (winner) => {
     location.reload(); // Reload the page to reset the game
 });
 
-// Player movement logic
+// Player movement logic with WASD controls
 function handleMovement() {
     let dx = 0, dy = 0;
 
-    if (keys['ArrowUp']) dy = -2;
-    if (keys['ArrowDown']) dy = 2;
-    if (keys['ArrowLeft']) dx = -2;
-    if (keys['ArrowRight']) dx = 2;
+    if (keys['w']) dy = -2;
+    if (keys['s']) dy = 2;
+    if (keys['a']) dx = -2;
+    if (keys['d']) dx = 2;
 
     if (dx || dy) {
         socket.emit('playerMovement', { dx, dy });
@@ -145,10 +145,10 @@ function draw() {
     ctx.fillRect(0, 150, 10, 100);  // Left goal
     ctx.fillRect(590, 150, 10, 100); // Right goal
 
-    // Draw players
+    // Draw players (always blue)
     for (let id in players) {
         const player = players[id];
-        ctx.fillStyle = player.hasPuck ? 'green' : 'blue';
+        ctx.fillStyle = 'blue';
         ctx.beginPath();
         ctx.arc(player.x, player.y, player.radius, 0, 2 * Math.PI);
         ctx.fill();

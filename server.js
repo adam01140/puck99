@@ -68,6 +68,7 @@ io.on('connection', (socket) => {
 
             io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
             updatePuckPosition(socket.id);
+            checkGoal();
         });
 
         // Handle shooting the puck
@@ -103,8 +104,8 @@ setInterval(() => {
         if (puck.x < puck.radius || puck.x > 600 - puck.radius) puck.vx = -puck.vx;
         if (puck.y < puck.radius || puck.y > 400 - puck.radius) puck.vy = -puck.vy;
 
-        checkGoal();
         checkPuckPossession();
+        checkGoal();
     } else {
         updatePuckPosition(puck.heldBy);
     }
@@ -112,18 +113,21 @@ setInterval(() => {
     io.emit('puckUpdate', puck);
 }, 1000 / 60);
 
-// Check if the puck goes into a goal
+// Check if the puck (or player carrying it) goes into a goal
 function checkGoal() {
-    if (puck.x < 10 && puck.y > 150 && puck.y < 250) {  // Left goal
-        score.player2++;
-        alertPoint("Point for player 2");
-        resetPositions();
-        checkWin();
-    } else if (puck.x > 590 && puck.y > 150 && puck.y < 250) {  // Right goal
-        score.player1++;
-        alertPoint("Point for player 1");
-        resetPositions();
-        checkWin();
+    for (let id in players) {
+        const player = players[id];
+        if (puck.heldBy === id && puck.x < 10 && puck.y > 150 && puck.y < 250) {  // Left goal (Player 2 scores)
+            score.player2++;
+            alertPoint("Point for player 2");
+            resetPositions();
+            checkWin();
+        } else if (puck.heldBy === id && puck.x > 590 && puck.y > 150 && puck.y < 250) {  // Right goal (Player 1 scores)
+            score.player1++;
+            alertPoint("Point for player 1");
+            resetPositions();
+            checkWin();
+        }
     }
 }
 
