@@ -2,11 +2,14 @@ const socket = io();
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const playButton = document.getElementById('playButton');
+const scoreboard = document.getElementById('scoreboard');
+
 let players = {};
 let puck = { x: 300, y: 200, radius: 10 };
 let localPlayerId = null;
 let mousePos = { x: 0, y: 0 };
 let isPlaying = false;
+let score = { player1: 0, player2: 0 };
 
 // Input handling
 const keys = {};
@@ -66,20 +69,6 @@ socket.on('puckPossession', (data) => {
     }
 });
 
-// Player movement logic
-function handleMovement() {
-    let dx = 0, dy = 0;
-
-    if (keys['ArrowUp']) dy = -2;
-    if (keys['ArrowDown']) dy = 2;
-    if (keys['ArrowLeft']) dx = -2;
-    if (keys['ArrowRight']) dx = 2;
-
-    if (dx || dy) {
-        socket.emit('playerMovement', { dx, dy });
-    }
-}
-
 // Listen for game state updates from server
 socket.on('currentPlayers', (serverPlayers) => {
     players = serverPlayers;
@@ -113,9 +102,48 @@ socket.on('puckUpdate', (updatedPuck) => {
     puck = updatedPuck;
 });
 
+// Update score and display it
+socket.on('updateScore', (newScore) => {
+    score = newScore;
+    scoreboard.textContent = `Player 1: ${score.player1} | Player 2: ${score.player2}`;
+});
+
+socket.on('resetPositions', () => {
+    alert("Positions reset. Game continues.");
+});
+
+// Listen for game win notification
+socket.on('gameOver', (winner) => {
+    alert(`${winner} won the game!`);
+    location.reload(); // Reload the page to reset the game
+});
+
+// Player movement logic
+function handleMovement() {
+    let dx = 0, dy = 0;
+
+    if (keys['ArrowUp']) dy = -2;
+    if (keys['ArrowDown']) dy = 2;
+    if (keys['ArrowLeft']) dx = -2;
+    if (keys['ArrowRight']) dx = 2;
+
+    if (dx || dy) {
+        socket.emit('playerMovement', { dx, dy });
+    }
+}
+
 // Draw loop
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw border
+    ctx.strokeStyle = 'black';
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+    // Draw goals
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 150, 10, 100);  // Left goal
+    ctx.fillRect(590, 150, 10, 100); // Right goal
 
     // Draw players
     for (let id in players) {

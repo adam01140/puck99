@@ -15,6 +15,7 @@
         }
         #gameCanvas {
             display: none;
+            border: 2px solid black;
         }
         #playButton {
             font-size: 24px;
@@ -27,6 +28,9 @@
     <div id="container">
         <button id="playButton">Play</button>
         <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <div id="scoreboard" style="text-align:center; font-size: 24px; margin-top: 10px;">
+            Player 1: 0 | Player 2: 0
+        </div>
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>

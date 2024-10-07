@@ -12,6 +12,7 @@ let puck = { x: 300, y: 200, vx: 0, vy: 0, heldBy: null, radius: 10 };
 let mousePos = {};
 let playerCount = 0;
 const MAX_PLAYERS = 2;
+let score = { player1: 0, player2: 0 };
 
 app.use(express.static('public'));
 
@@ -33,6 +34,7 @@ io.on('connection', (socket) => {
         socket.emit('playerJoined', { success: true, message });
         socket.emit('currentPlayers', players);
         socket.emit('puckData', puck);
+        io.emit('updateScore', score);
         socket.broadcast.emit('newPlayer', { id: socket.id, x: startX, y: 200, radius: 20 });
 
         // Track mouse movement for each player
@@ -92,7 +94,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Update puck position and broadcast
+// Update puck position and check for goals
 setInterval(() => {
     if (!puck.heldBy) {
         puck.x += puck.vx;
@@ -101,6 +103,7 @@ setInterval(() => {
         if (puck.x < puck.radius || puck.x > 600 - puck.radius) puck.vx = -puck.vx;
         if (puck.y < puck.radius || puck.y > 400 - puck.radius) puck.vy = -puck.vy;
 
+        checkGoal();
         checkPuckPossession();
     } else {
         updatePuckPosition(puck.heldBy);
@@ -108,6 +111,53 @@ setInterval(() => {
 
     io.emit('puckUpdate', puck);
 }, 1000 / 60);
+
+// Check if the puck goes into a goal
+function checkGoal() {
+    if (puck.x < 10 && puck.y > 150 && puck.y < 250) {  // Left goal
+        score.player2++;
+        alertPoint("Point for player 2");
+        resetPositions();
+        checkWin();
+    } else if (puck.x > 590 && puck.y > 150 && puck.y < 250) {  // Right goal
+        score.player1++;
+        alertPoint("Point for player 1");
+        resetPositions();
+        checkWin();
+    }
+}
+
+// Alert point and reset positions
+function alertPoint(message) {
+    io.emit('updateScore', score);
+    io.emit('resetPositions');
+    console.log(message);
+}
+
+// Reset positions after a goal
+function resetPositions() {
+    puck.x = 300;
+    puck.y = 200;
+    puck.vx = 0;
+    puck.vy = 0;
+    for (let id in players) {
+        if (players[id]) {
+            players[id].x = id === Object.keys(players)[0] ? 100 : 500;
+            players[id].y = 200;
+        }
+    }
+    io.emit('puckUpdate', puck);
+    io.emit('currentPlayers', players);
+}
+
+// Check if someone won
+function checkWin() {
+    if (score.player1 >= 10) {
+        io.emit('gameOver', 'Player 1');
+    } else if (score.player2 >= 10) {
+        io.emit('gameOver', 'Player 2');
+    }
+}
 
 // Update puck position for the player holding it
 function updatePuckPosition(playerId) {
