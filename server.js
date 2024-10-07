@@ -58,10 +58,36 @@ io.on('connection', (socket) => {
             player.y = newY;
         }
 
-        // Broadcast player movement to all clients
-        io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
+        // If the player is holding the puck, calculate the bulging position
+        if (puck.heldBy === socket.id) {
+            const dx = mousePos[socket.id].x - player.x;
+            const dy = mousePos[socket.id].y - player.y;
+            const angle = Math.atan2(dy, dx);
+            const offset = 25;
 
-        updatePuckPosition(socket.id);
+            puck.x = player.x + Math.cos(angle) * offset;
+            puck.y = player.y + Math.sin(angle) * offset;
+        }
+
+        // Check if the puck is free or if another player touches the puck while it's bulging out (for stealing)
+        if (puck.heldBy !== socket.id && distance(player, puck) < player.radius + puck.radius) {
+            puck.heldBy = socket.id; // Player steals the puck
+            player.hasPuck = true;
+
+            // Notify the original holder they lost the puck
+            for (let id in players) {
+                if (players[id].hasPuck && id !== socket.id) {
+                    players[id].hasPuck = false;
+                    io.to(id).emit('puckPossession', { hasPuck: false });
+                }
+            }
+
+            // Notify the new holder they now have the puck
+            socket.emit('puckPossession', { hasPuck: true });
+        }
+
+        io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
+        io.emit('puckUpdate', puck); // Ensure puck updates for all players
     });
 
     // Player shoots the puck
@@ -100,28 +126,9 @@ setInterval(() => {
         if (puck.y < puck.radius || puck.y > 400 - puck.radius) puck.vy = -puck.vy;
 
         io.emit('puckUpdate', puck);
-    } else {
-        updatePuckPosition(puck.heldBy);
     }
 }, 1000 / 60);
 
-// Update puck position to "bulge" towards the mouse direction for the player holding it
-function updatePuckPosition(playerId) {
-    const player = players[playerId];
-    if (player && player.hasPuck && mousePos[playerId]) {
-        const dx = mousePos[playerId].x - player.x;
-        const dy = mousePos[playerId].y - player.y;
-        const angle = Math.atan2(dy, dx);
-        const offset = 25;
-
-        puck.x = player.x + Math.cos(angle) * offset;
-        puck.y = player.y + Math.sin(angle) * offset;
-
-        io.emit('puckUpdate', puck);
-    }
-}
-
-// Distance calculation function
 function distance(a, b) {
     return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
