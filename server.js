@@ -49,24 +49,57 @@ io.on('connection', (socket) => {
             let newX = player.x + movementData.dx;
             let newY = player.y + movementData.dy;
 
-            let collision = false;
+            player.x = newX;
+            player.y = newY;
+
+            let movedPlayers = new Set();
+            movedPlayers.add(socket.id);
+
+            // Now check for collision with other players
             for (let id in players) {
                 if (id !== socket.id) {
                     const otherPlayer = players[id];
-                    const distanceBetweenPlayers = distance({ x: newX, y: newY }, otherPlayer);
-                    if (distanceBetweenPlayers < player.radius + otherPlayer.radius) {
-                        collision = true;
-                        break;
+                    const dx = player.x - otherPlayer.x;
+                    const dy = player.y - otherPlayer.y;
+                    const distanceBetweenPlayers = Math.sqrt(dx * dx + dy * dy);
+                    const minDistance = player.radius + otherPlayer.radius;
+
+                    if (distanceBetweenPlayers < minDistance) {
+                        // Collision detected, resolve it
+                        const overlap = (minDistance - distanceBetweenPlayers) / 2;
+
+                        // Normalize the displacement vector
+                        const nx = dx / distanceBetweenPlayers;
+                        const ny = dy / distanceBetweenPlayers;
+
+                        // Adjust both players' positions
+                        player.x += nx * overlap;
+                        player.y += ny * overlap;
+
+                        otherPlayer.x -= nx * overlap;
+                        otherPlayer.y -= ny * overlap;
+
+                        movedPlayers.add(id);
                     }
                 }
             }
 
-            if (!collision) {
-                player.x = newX;
-                player.y = newY;
+            // Clamp positions within game area
+            const GAME_WIDTH = 600;
+            const GAME_HEIGHT = 400;
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
             }
 
-            io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
+            movedPlayers.forEach((id) => {
+                const p = players[id];
+                p.x = clamp(p.x, p.radius, GAME_WIDTH - p.radius);
+                p.y = clamp(p.y, p.radius, GAME_HEIGHT - p.radius);
+
+                io.emit('playerMoved', { id: id, x: p.x, y: p.y });
+            });
+
             updatePuckPosition(socket.id);
             checkSteal(socket.id);  // Check for steal whenever the player moves
             checkGoal();
