@@ -28,7 +28,16 @@ io.on('connection', (socket) => {
 
         playerCount++;
         let startX = playerCount === 1 ? 100 : 500;
-        players[socket.id] = { x: startX, y: 200, radius: 20, hasPuck: false };
+        players[socket.id] = {
+            x: startX,
+            y: 200,
+            radius: 20,
+            hasPuck: false,
+            canJolt: true, // Tracks if the player can jolt
+            speedModifier: 1, // Modifies the player's speed (reduced after jolting)
+            vx: 0, // Velocity in x-direction
+            vy: 0  // Velocity in y-direction
+        };
 
         const message = `You are player ${playerCount}`;
         socket.emit('playerJoined', { success: true, message });
@@ -46,63 +55,54 @@ io.on('connection', (socket) => {
         socket.on('playerMovement', (movementData) => {
             const player = players[socket.id];
 
-            let newX = player.x + movementData.dx;
-            let newY = player.y + movementData.dy;
+            const speed = 0.7 * player.speedModifier; // Reduced speed from 2 to 1
+            let dx = movementData.dx * speed;
+            let dy = movementData.dy * speed;
 
-            player.x = newX;
-            player.y = newY;
+            player.vx += dx;
+            player.vy += dy;
+        });
 
-            let movedPlayers = new Set();
-            movedPlayers.add(socket.id);
+        // Handle jolting
+        socket.on('jolt', (data) => {
+            const player = players[socket.id];
 
-            // Now check for collision with other players
-            for (let id in players) {
-                if (id !== socket.id) {
-                    const otherPlayer = players[id];
-                    const dx = player.x - otherPlayer.x;
-                    const dy = player.y - otherPlayer.y;
-                    const distanceBetweenPlayers = Math.sqrt(dx * dx + dy * dy);
-                    const minDistance = player.radius + otherPlayer.radius;
+            if (player.canJolt && !player.hasPuck) {
+                // Calculate movement direction
+                let dx = 0;
+                let dy = 0;
 
-                    if (distanceBetweenPlayers < minDistance) {
-                        // Collision detected, resolve it
-                        const overlap = (minDistance - distanceBetweenPlayers) / 2;
-
-                        // Normalize the displacement vector
-                        const nx = dx / distanceBetweenPlayers;
-                        const ny = dy / distanceBetweenPlayers;
-
-                        // Adjust both players' positions
-                        player.x += nx * overlap;
-                        player.y += ny * overlap;
-
-                        otherPlayer.x -= nx * overlap;
-                        otherPlayer.y -= ny * overlap;
-
-                        movedPlayers.add(id);
+                if (data.mousePos) {
+                    dx = data.mousePos.x - player.x;
+                    dy = data.mousePos.y - player.y;
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    if (length > 0) {
+                        dx /= length;
+                        dy /= length;
                     }
                 }
+
+                // Jolt speed
+                const joltSpeed = 15; // Adjust as needed
+                player.vx += dx * joltSpeed;
+                player.vy += dy * joltSpeed;
+
+                // Reduce speed temporarily
+                player.speedModifier = 0.7;
+                socket.emit('modifySpeed', player.speedModifier);
+
+                // Reset speed after 1.5 seconds
+                setTimeout(() => {
+                    player.speedModifier = 1;
+                    socket.emit('modifySpeed', player.speedModifier);
+                }, 1500); // Reduced speed duration
+
+                // Start cooldown
+                player.canJolt = false;
+                setTimeout(() => {
+                    player.canJolt = true;
+                }, 1000); // Changed from 3000 to 1000 milliseconds
             }
-
-            // Clamp positions within game area
-            const GAME_WIDTH = 600;
-            const GAME_HEIGHT = 400;
-
-            function clamp(value, min, max) {
-                return Math.max(min, Math.min(max, value));
-            }
-
-            movedPlayers.forEach((id) => {
-                const p = players[id];
-                p.x = clamp(p.x, p.radius, GAME_WIDTH - p.radius);
-                p.y = clamp(p.y, p.radius, GAME_HEIGHT - p.radius);
-
-                io.emit('playerMoved', { id: id, x: p.x, y: p.y });
-            });
-
-            updatePuckPosition(socket.id);
-            checkSteal(socket.id);  // Check for steal whenever the player moves
-            checkGoal();
         });
 
         // Handle shooting the puck
@@ -129,12 +129,18 @@ io.on('connection', (socket) => {
     });
 });
 
-// Update puck position and check for goals
+// Game update loop
 setInterval(() => {
+    // Update puck position
     if (!puck.heldBy) {
         puck.x += puck.vx;
         puck.y += puck.vy;
 
+        // Apply friction to puck
+        puck.vx *= 0.99;
+        puck.vy *= 0.99;
+
+        // Bounce off walls
         if (puck.x < puck.radius || puck.x > 600 - puck.radius) puck.vx = -puck.vx;
         if (puck.y < puck.radius || puck.y > 400 - puck.radius) puck.vy = -puck.vy;
 
@@ -144,19 +150,85 @@ setInterval(() => {
         updatePuckPosition(puck.heldBy);
     }
 
+    // Update players
+    for (let id in players) {
+        const player = players[id];
+
+        // Update position
+        player.x += player.vx;
+        player.y += player.vy;
+
+        // Apply friction to player velocity
+        player.vx *= 0.9;
+        player.vy *= 0.9;
+
+        // Clamp positions within game area
+        const GAME_WIDTH = 600;
+        const GAME_HEIGHT = 400;
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        player.x = clamp(player.x, player.radius, GAME_WIDTH - player.radius);
+        player.y = clamp(player.y, player.radius, GAME_HEIGHT - player.radius);
+
+        // Check for collision with other players
+        for (let otherId in players) {
+            if (otherId !== id) {
+                const otherPlayer = players[otherId];
+                const dx = player.x - otherPlayer.x;
+                const dy = player.y - otherPlayer.y;
+                const distanceBetweenPlayers = Math.sqrt(dx * dx + dy * dy);
+                const minDistance = player.radius + otherPlayer.radius;
+
+                if (distanceBetweenPlayers < minDistance) {
+                    // Collision detected, resolve it
+                    const overlap = (minDistance - distanceBetweenPlayers) / 2;
+
+                    // Normalize the displacement vector
+                    const nx = dx / distanceBetweenPlayers;
+                    const ny = dy / distanceBetweenPlayers;
+
+                    // Adjust positions
+                    player.x += nx * overlap;
+                    player.y += ny * overlap;
+                    otherPlayer.x -= nx * overlap;
+                    otherPlayer.y -= ny * overlap;
+
+                    // Adjust velocities (simple collision response)
+                    const combinedMass = 2; // Assuming equal mass
+                    const collisionDamping = 0.5;
+
+                    const vxTotal = player.vx - otherPlayer.vx;
+                    const vyTotal = player.vy - otherPlayer.vy;
+
+                    player.vx -= collisionDamping * vxTotal / combinedMass;
+                    player.vy -= collisionDamping * vyTotal / combinedMass;
+
+                    otherPlayer.vx += collisionDamping * vxTotal / combinedMass;
+                    otherPlayer.vy += collisionDamping * vyTotal / combinedMass;
+                }
+            }
+        }
+
+        io.emit('playerMoved', { id: id, x: player.x, y: player.y });
+    }
+
     io.emit('puckUpdate', puck);
+
 }, 1000 / 60);
 
 // Check if the puck (or player carrying it) goes into a goal
 function checkGoal() {
     for (let id in players) {
         const player = players[id];
-        if (puck.heldBy === id && puck.x < 10 && puck.y > 150 && puck.y < 250) {  // Left goal (Player 2 scores)
+        if (puck.heldBy === id && puck.x < 10 && puck.y > 150 && puck.y < 250) { // Left goal (Player 2 scores)
             score.player2++;
             alertPoint("Point for player 2");
             resetPositions();
             checkWin();
-        } else if (puck.heldBy === id && puck.x > 590 && puck.y > 150 && puck.y < 250) {  // Right goal (Player 1 scores)
+        } else if (puck.heldBy === id && puck.x > 590 && puck.y > 150 && puck.y < 250) { // Right goal (Player 1 scores)
             score.player1++;
             alertPoint("Point for player 1");
             resetPositions();
@@ -182,6 +254,8 @@ function resetPositions() {
         if (players[id]) {
             players[id].x = id === Object.keys(players)[0] ? 100 : 500;
             players[id].y = 200;
+            players[id].vx = 0;
+            players[id].vy = 0;
         }
     }
     io.emit('puckUpdate', puck);
@@ -204,7 +278,7 @@ function checkSteal(playerId) {
         // Steal the puck
         players[puck.heldBy].hasPuck = false;
         puck.heldBy = playerId;
-        players[playerId].hasPuck = true;
+        player.hasPuck = true;
         io.to(playerId).emit('puckPossession', { hasPuck: true });
         console.log(`Player ${playerId} stole the puck!`);
     }

@@ -11,10 +11,18 @@ let mousePos = { x: 0, y: 0 };
 let isPlaying = false;
 let score = { player1: 0, player2: 0 };
 
+let canJolt = true; // Tracks if the player can jolt
+let speedModifier = 1; // Modifies the player's speed (reduced after jolting)
+
 // Input handling
 const keys = {};
-document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+document.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+});
+
+document.addEventListener('keyup', (e) => {
+    keys[e.key.toLowerCase()] = false;
+});
 
 // Track mouse position and send it to the server
 canvas.addEventListener('mousemove', (e) => {
@@ -27,19 +35,31 @@ canvas.addEventListener('mousemove', (e) => {
     }
 });
 
-// Shoot the puck when the player clicks
+// Handle mouse click for shooting or jolting
 canvas.addEventListener('click', () => {
     const player = players[localPlayerId];
 
-    if (player && player.hasPuck) {
-        const dx = mousePos.x - player.x;
-        const dy = mousePos.y - player.y;
-        const angle = Math.atan2(dy, dx);
-        const speed = 7;
-        const vx = speed * Math.cos(angle);
-        const vy = speed * Math.sin(angle);
+    if (player) {
+        if (player.hasPuck) {
+            // Shoot the puck
+            const dx = mousePos.x - player.x;
+            const dy = mousePos.y - player.y;
+            const angle = Math.atan2(dy, dx);
+            const speed = 7;
+            const vx = speed * Math.cos(angle);
+            const vy = speed * Math.sin(angle);
 
-        socket.emit('shootPuck', { vx, vy });
+            socket.emit('shootPuck', { vx, vy });
+        } else if (canJolt) {
+            // Perform a jolt
+            socket.emit('jolt', { mousePos });
+            canJolt = false;
+
+            // Start cooldown timer (1 second)
+            setTimeout(() => {
+                canJolt = true;
+            }, 1000); // Changed from 3000 to 1000 milliseconds
+        }
     }
 });
 
@@ -78,12 +98,19 @@ socket.on('currentPlayers', (serverPlayers) => {
 });
 
 socket.on('newPlayer', (newPlayer) => {
-    players[newPlayer.id] = { x: newPlayer.x, y: newPlayer.y, radius: newPlayer.radius, hasPuck: false };
+    players[newPlayer.id] = {
+        x: newPlayer.x,
+        y: newPlayer.y,
+        radius: newPlayer.radius,
+        hasPuck: false
+    };
 });
 
 socket.on('playerMoved', (playerData) => {
-    players[playerData.id].x = playerData.x;
-    players[playerData.id].y = playerData.y;
+    if (players[playerData.id]) {
+        players[playerData.id].x = playerData.x;
+        players[playerData.id].y = playerData.y;
+    }
 });
 
 socket.on('playerDisconnected', (playerId) => {
@@ -118,14 +145,26 @@ socket.on('gameOver', (winner) => {
     location.reload(); // Reload the page to reset the game
 });
 
+// Listen for speed modification after jolting
+socket.on('modifySpeed', (modifier) => {
+    speedModifier = modifier;
+
+    // Reset speed after 1.5 seconds
+    setTimeout(() => {
+        speedModifier = 1;
+    }, 1500);
+});
+
 // Player movement logic with WASD controls
 function handleMovement() {
     let dx = 0, dy = 0;
 
-    if (keys['w']) dy = -2;
-    if (keys['s']) dy = 2;
-    if (keys['a']) dx = -2;
-    if (keys['d']) dx = 2;
+    const speed = 0.7 * speedModifier; // Reduced speed from 2 to 1
+
+    if (keys['w']) dy = -speed;
+    if (keys['s']) dy = speed;
+    if (keys['a']) dx = -speed;
+    if (keys['d']) dx = speed;
 
     if (dx || dy) {
         socket.emit('playerMovement', { dx, dy });
