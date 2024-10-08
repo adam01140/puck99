@@ -4,6 +4,13 @@ const ctx = canvas.getContext('2d');
 const playButton = document.getElementById('playButton');
 const scoreboard = document.getElementById('scoreboard');
 
+// Game Constants (Must match server.js)
+const GAME_WIDTH = 600;
+const GAME_HEIGHT = 400;
+const GOAL_WIDTH = 10;
+const GOAL_HEIGHT = 100;
+
+// Game State
 let players = {};
 let puck = { x: 300, y: 200, radius: 10 };
 let localPlayerId = null;
@@ -50,6 +57,7 @@ canvas.addEventListener('click', () => {
             const vy = speed * Math.sin(angle);
 
             socket.emit('shootPuck', { vx, vy });
+            console.log(`Player ${player.number.replace('player', '')} is shooting the puck.`);
         } else if (canJolt) {
             // Perform a jolt
             socket.emit('jolt', { mousePos });
@@ -58,7 +66,8 @@ canvas.addEventListener('click', () => {
             // Start cooldown timer (1 second)
             setTimeout(() => {
                 canJolt = true;
-            }, 1000); // Changed from 3000 to 1000 milliseconds
+            }, 1000); // 1 second cooldown
+            console.log(`Player ${player.number.replace('player', '')} performed a jolt.`);
         }
     }
 });
@@ -66,6 +75,7 @@ canvas.addEventListener('click', () => {
 // Handle play button click
 playButton.addEventListener('click', () => {
     socket.emit('joinGame');
+    console.log('Join game requested.');
 });
 
 // Handle game join confirmation
@@ -76,8 +86,10 @@ socket.on('playerJoined', (data) => {
         canvas.style.display = 'block';
         alert(data.message);
         isPlaying = true;
+        console.log(`Joined the game as ${data.message}`);
     } else {
         alert(data.message);
+        console.log(`Join game failed: ${data.message}`);
     }
 });
 
@@ -86,6 +98,7 @@ socket.on('puckPossession', (data) => {
     const player = players[localPlayerId];
     if (player) {
         player.hasPuck = data.hasPuck;
+        console.log(`Puck possession updated: ${data.hasPuck ? 'Has Puck' : 'Does not have Puck'}`);
     }
 });
 
@@ -95,71 +108,90 @@ socket.on('currentPlayers', (serverPlayers) => {
     if (!localPlayerId) {
         localPlayerId = socket.id;
     }
+    console.log('Current players:', players);
 });
 
+// Listen for a new player joining
 socket.on('newPlayer', (newPlayer) => {
     players[newPlayer.id] = {
+        socketId: newPlayer.socketId,
+        id: newPlayer.id,
+        number: newPlayer.number,
         x: newPlayer.x,
         y: newPlayer.y,
         radius: newPlayer.radius,
-        hasPuck: false
+        hasPuck: newPlayer.hasPuck
     };
+    console.log(`New player joined: ${newPlayer.number.replace('player', 'Player ')}`);
 });
 
+// Listen for player movements
 socket.on('playerMoved', (playerData) => {
     if (players[playerData.id]) {
         players[playerData.id].x = playerData.x;
         players[playerData.id].y = playerData.y;
+        console.log(`Player ${players[playerData.id].number.replace('player', '')} moved to (${playerData.x}, ${playerData.y})`);
     }
 });
 
+// Listen for player disconnections
 socket.on('playerDisconnected', (playerId) => {
-    delete players[playerId];
+    if (players[playerId]) {
+        console.log(`Player ${players[playerId].number.replace('player', '')} disconnected.`);
+        delete players[playerId];
+    }
 });
 
+// Listen for puck data
 socket.on('puckData', (serverPuck) => {
     puck = serverPuck;
+    console.log('Initial puck data received:', puck);
 });
 
+// Listen for puck shots
 socket.on('puckShot', (serverPuck) => {
     puck = serverPuck;
+    console.log('Puck has been shot:', puck);
 });
 
+// Listen for puck updates
 socket.on('puckUpdate', (updatedPuck) => {
     puck = updatedPuck;
+    // Optional: You can log puck updates if needed
+    // console.log('Puck updated:', puck);
 });
 
 // Update score and display it
 socket.on('updateScore', (newScore) => {
     score = newScore;
     scoreboard.textContent = `Player 1: ${score.player1} | Player 2: ${score.player2}`;
+    console.log('Score updated:', score);
 });
 
+// Reset positions after a goal
 socket.on('resetPositions', () => {
     alert("Positions reset. Game continues.");
+    console.log('Positions have been reset after a goal.');
 });
 
 // Listen for game win notification
 socket.on('gameOver', (winner) => {
     alert(`${winner} won the game!`);
+    console.log(`Game over! ${winner} won.`);
     location.reload(); // Reload the page to reset the game
 });
 
 // Listen for speed modification after jolting
 socket.on('modifySpeed', (modifier) => {
     speedModifier = modifier;
-
-    // Reset speed after 1.5 seconds
-    setTimeout(() => {
-        speedModifier = 1;
-    }, 1500);
+    console.log(`Speed modifier updated: ${speedModifier}`);
 });
 
 // Player movement logic with WASD controls
 function handleMovement() {
     let dx = 0, dy = 0;
 
-    const speed = 0.7 * speedModifier; // Reduced speed from 2 to 1
+    const speed = 1 * speedModifier; // Base speed
 
     if (keys['w']) dy = -speed;
     if (keys['s']) dy = speed;
@@ -173,24 +205,33 @@ function handleMovement() {
 
 // Draw loop
 function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     // Draw border
     ctx.strokeStyle = 'black';
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     // Draw goals
     ctx.fillStyle = 'black';
-    ctx.fillRect(0, 150, 10, 100);  // Left goal
-    ctx.fillRect(590, 150, 10, 100); // Right goal
+    // Left goal
+    ctx.fillRect(0, (GAME_HEIGHT - GOAL_HEIGHT) / 2, GOAL_WIDTH, GOAL_HEIGHT);
+    // Right goal
+    ctx.fillRect(GAME_WIDTH - GOAL_WIDTH, (GAME_HEIGHT - GOAL_HEIGHT) / 2, GOAL_WIDTH, GOAL_HEIGHT);
 
-    // Draw players (always blue)
+    // Draw players
     for (let id in players) {
         const player = players[id];
-        ctx.fillStyle = 'blue';
+        ctx.fillStyle = player.id === localPlayerId ? 'green' : 'blue'; // Local player in green
         ctx.beginPath();
         ctx.arc(player.x, player.y, player.radius, 0, 2 * Math.PI);
         ctx.fill();
+
+        // Optional: Display player numbers
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(player.number.replace('player', 'P'), player.x, player.y);
     }
 
     // Draw puck
