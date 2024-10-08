@@ -95,10 +95,11 @@ function resetGame() {
 }
 
 // Handle scoring when the puck enters a goal
+// Handle scoring when the puck enters a goal
 function checkGoal() {
     // Left Goal (Player 2 scores)
     if (
-        puck.x < GOAL_WIDTH &&
+        puck.x - puck.radius <= GOAL_WIDTH && // Adjusted to check if puck's left edge touches goal
         puck.y > (GAME_HEIGHT - GOAL_HEIGHT) / 2 &&
         puck.y < (GAME_HEIGHT + GOAL_HEIGHT) / 2
     ) {
@@ -106,13 +107,14 @@ function checkGoal() {
     }
     // Right Goal (Player 1 scores)
     else if (
-        puck.x > GAME_WIDTH - GOAL_WIDTH &&
+        puck.x + puck.radius >= GAME_WIDTH - GOAL_WIDTH && // Adjusted to check if puck's right edge touches goal
         puck.y > (GAME_HEIGHT - GOAL_HEIGHT) / 2 &&
         puck.y < (GAME_HEIGHT + GOAL_HEIGHT) / 2
     ) {
         handleGoalScoring('player1');
     }
 }
+
 
 // Handle puck stealing
 function checkSteal(playerId) {
